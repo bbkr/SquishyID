@@ -22,7 +22,6 @@ impl SquishyID {
             if characters_to_positions.insert( character, position ).is_some( ) {
                 return Err( "Key must contain unique characters." );
             }
-
         }
 
         Ok(
@@ -53,13 +52,24 @@ impl SquishyID {
 
     pub fn decode ( &self, encoded: &str ) -> Result<u64, &str> {
 
+        if encoded.len() == 0 {
+            return Err( "Encoded value must contain at least 1 character." );
+        }
+
         let mut decoded: u64 = 0;
 
         for ( position, character ) in encoded.chars().rev().enumerate() {
-            match self.characters_to_positions.get( &character ) {
+
+            let factor: u64 = match self.characters_to_positions.get( &character ) {
                 None => return Err( "Encoded value contains character not present in key." ),
-                Some( &factor ) => { decoded += factor as u64 * (self.length as u64).pow( position as u32 ) }
+                Some( &factor ) => factor as u64
+            };
+
+            match ( self.length as u64 ).checked_pow( position as u32 ).and_then( |a| a.checked_mul( factor) ).and_then( |a| a.checked_add( decoded ) ) {
+                None => return Err( "Encoded value too big to decode." ),
+                Some( bigger_decoded ) => decoded = bigger_decoded
             }
+
         }
 
         Ok( decoded )
@@ -111,6 +121,24 @@ mod tests {
         let s = SquishyID::new( "😀😁😂😃😄😅😆😇😈😉😊😋😌😍😎😏😐😑😒😓😔😕😖😗😘😙😚😛😜😝😞😟😠😡😢😣😤😥😦😧😨😩😪😫😬😭😮😯😰😱😲😳😴😵😶😷" ).unwrap( );
         assert_eq!( s.encode( 48888851145 ), "😁😠😫😈😵😇😁" );
         assert_eq!( s.decode( "😁😠😫😈😵😇😁" ).unwrap(), 48888851145 );
+    }
+
+    #[test]
+    fn decode_empty_string ( ) {
+        let s = SquishyID::new( "ab" ).unwrap( );
+        assert!( matches!( s.decode( "" ), Err( "Encoded value must contain at least 1 character.") ) );
+    }
+
+    #[test]
+    fn decode_character_not_in_key ( ) {
+        let s = SquishyID::new( "ab" ).unwrap( );
+        assert!( matches!( s.decode( "x" ), Err( "Encoded value contains character not present in key.") ) );
+    }
+
+    #[test]
+    fn decode_overflow ( ) {
+        let s = SquishyID::new( "0123456789ABCDEF" ).unwrap( );
+        assert!( matches!( s.decode( "10000000000000000" ), Err( "Encoded value too big to decode.") ) );
     }
 
 }
